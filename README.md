@@ -4,7 +4,13 @@ This repository contains cspcli.py, a python module with functions to interact w
 
 The module contains as well a shell application, that can be used in order to explore the calls to the CSP REST API.
 
-# Tutorial
+Additionally, you can find a sample script createCustomer.py, that shows how to import the functions of the module.
+
+## Using the CSPCLI module
+
+Download the cspcli.py file to a directory in your machine from where you can import modules. You can then import the functions you require (at least the login function). Check the script createCustomer.py for an example where the functions cspLogin and addCustomer are imported.
+
+## CSPCLI Tutorial
 
 After downloading cspcli.py to your local machine, launch the application with the following command:
 
