@@ -70,7 +70,7 @@ def csploginUser(tenantId, appId, username, verbose=False):
             print('VERBOSE - ***************  REST API CALL - END  *************** ')
         return False
 
-
+# ARM login with app-only auth
 def armlogin(tenantId, appId, appSecret, verbose=False):
     url = 'https://login.microsoftonline.com/'+ tenantId + '/oauth2/token?api-version=1.0'
     data = 'grant_type=client_credentials&resource=https%3A%2F%2Fmanagement.azure.com%2F&client_id=' + appId + '&client_secret=' + appSecret
@@ -95,6 +95,37 @@ def armlogin(tenantId, appId, appSecret, verbose=False):
             print('VERBOSE - RESPONSE %s' % response.text)
             print('VERBOSE - ***************  REST API CALL - END  *************** ')
         return False
+
+# ARM login with app+user auth
+def armloginUser(tenantId, username, verbose=False):
+    appId = '1950a258-227b-4e31-a9cf-717495945fc2'
+    password = getpass.getpass('Please enter the password for user %s: ' % username)
+    if not password:
+        return False
+    url = 'https://login.microsoftonline.com/'+ tenantId + '/oauth2/token?api-version=1.0'
+    data = 'grant_type=password&resource=https%3A%2F%2Fmanagement.azure.com%2F&client_id=' + appId + '&username=' + username + '&password=' + password + '&scope=openid' 
+    if verbose:
+        print('VERBOSE - *************** REST API CALL - BEGIN *************** ')
+        print('VERBOSE - POST to URL %s' % url)
+        print('VERBOSE - NO HEADERS')
+        print('VERBOSE - DATA: %s' % data)
+        print('Calling REST API...')
+    response = requests.post(url, data=data)
+    if response.status_code == 200:
+        if verbose:
+            print('VERBOSE - RETURN CODE ' + str(response.status_code))
+            print('VERBOSE - RESPONSE %s' % response.text)
+            print('VERBOSE - ***************  REST API CALL - END  *************** ')
+        jsonResponse = response.json()
+        token = jsonResponse['access_token']
+        return token
+    else:
+        print ("Error: RETURN CODE " + str(response.status_code))
+        if verbose:
+            print('VERBOSE - RESPONSE %s' % response.text)
+            print('VERBOSE - ***************  REST API CALL - END  *************** ')
+        return False
+
 
 # Using AAD Graph (graph.windows.net), eventually to be migrated to Microsoft Graph (graph.microsoft.com)
 def graphLogin(tenantId, appId, appSecret, verbose=False):
@@ -191,7 +222,7 @@ def getCustomerList(token, verbose=False):
 
 def getSubscriptions(token, customerId, onlyAzure=True, verbose=False):
     url = 'https://api.partnercenter.microsoft.com/v1/customers/' + customerId + '/subscriptions'
-    jsonResponse =sendRequest('GET', url, token, verbose=verbose)
+    jsonResponse = sendRequest('GET', url, token, verbose=verbose)
     if jsonResponse:
         #if jsonResponse['totalCount'] > 1:
         #    print ("WARNING, " + str(jsonResponse['totalCount']) + ' subscriptions found for that customer')
@@ -778,7 +809,8 @@ class CmdLineApp(cmd2.Cmd):
     #######
     # SET #
     #######
-    @cmd2.options([cmd2.make_option('-v', '--verbose', action="store_true", help="show REST API info")])
+    @cmd2.options([cmd2.make_option('-v', '--verbose', action="store_true", help="show REST API info"),
+                   cmd2.make_option('-u', '--userauth', action="store_true", help="login with app+user authentication")])
     def do_set(self, line, opts=None):
         '''
         Set a variable's value. Commands supported:
@@ -787,9 +819,10 @@ class CmdLineApp(cmd2.Cmd):
            set cspTenantId <a CSP partner tenant ID>
            set appId <your app ID for the CSP API>
            set appSecret <your app secret for the CSP API>
-           set cspToken apponly
-           set cspToken appuser
+           set cspToken
+           set cspToken --userauth
            set armToken
+           set armToken --userauth
         '''
         args = line.split()
         if len(args) < 1:
@@ -856,43 +889,70 @@ class CmdLineApp(cmd2.Cmd):
         # Set CSP token
         elif mycmd[:5] == 'cspto':
             # App+User (default option)
-            if len(args) < 2 or args[1][:4].lower() == 'appu':
+            if opts.userauth:
                 if self.variables['cspTenantId'] and self.variables['cspUsername'] and self.variables['nativeAppId']:
                     self.variables['cspToken'] = csploginUser(self.variables['cspTenantId'], self.variables['nativeAppId'], self.variables['cspUsername'], verbose=opts.verbose)
                     print('CSP token set using App+User authentication')
                 else:
                     print ("Please make sure you have set the variables cspTenantId, nativeAppId and cspUsername")
             # App Only
-            elif len(args) > 1 and args[1][:4].lower() == 'appo':
+            else:
                 if self.variables['cspTenantId'] and self.variables['appId'] and self.variables['appSecret']:
                     self.variables['cspToken'] = csplogin(self.variables['cspTenantId'], self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
                     print('CSP token set using App-only authentication')
                 else:
                     print ("Please make sure you have set the variables cspTenantId, appId and appSecret")
-            else:
-                print('Sorry, I could not recognize that suboption for the set cspToken command')
 
         # Set ARM Token
         elif mycmd[:6] == 'armtok':
-            if self.variables['appId'] and self.variables['appSecret']:
-                if len(args) > 1:
-                    customerId = args[1]
-                    if isGuid(customerId):
-                        self.variables['armToken'] = armlogin(customerId, self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
-                    else:
-                        print('%s does not seem to be a valid GUID format, trying it as customer name' % customerId)
-                        customerName = customerId
-                        customerId = getCustomerId(self.variables['cspToken'], customerName, opts.verbose)
-                        if customerId and isGuid(customerId):
-                            self.variables['armToken'] = armlogin(customerId, self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
+            self.variables['armToken'] = None
+            # App+User auth
+            if opts.userauth:
+                # Username from the environment variables
+                if self.variables['cspUsername']:
+                    username = self.variables['cspUsername']
+                    # Customer ID from environment variable or from command line
+                    if len(args) > 1:
+                        customerId = args[1]
+                        if isGuid(customerId):
+                            customerId = self.variables['customerId']
                         else:
-                            print('No customer was found named %s' % customerName)
-                elif self.variables['customerId'] and isGuid(self.variables['customerId']):
-                    self.variables['armToken'] = armlogin(self.variables['customerId'], self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
+                            print('%s does not seem to be a valid GUID format, trying it as customer name' % customerId)
+                            customerName = customerId
+                            customerId = getCustomerId(self.variables['cspToken'], customerName, opts.verbose)
+                            if not (customerId and isGuid(customerId)):
+                                print('No customer was found named %s' % customerName)
+                                return False
+                    elif self.variables['customerId'] and isGuid(self.variables['customerId']):
+                        customerId = self.variables['customerId']
+                    else:
+                        print("The customerId variable does not seem to be set, please make sure you define one with the command 'set customerId'")
+                        return False
+                    self.variables['armToken'] = armloginUser(customerId, username, verbose=opts.verbose)
+                    if self.variables['armToken']:
+                        print('ARM token generated with app+password authentication')
                 else:
-                    print("The customerId variable does not seem to be set, please make sure you define one with the command 'set customerId'")
+                    print ("Please make sure you have set the environment variable cspUsername with the 'set cspUsername' command")
+            # App-only Auth
             else:
-                print ("Please make sure you have set the environment variables appId and appSecret with the 'set' command")
+                # App Id and App Secret from the environment variables
+                if self.variables['appId'] and self.variables['appSecret']:
+                    if len(args) > 1:
+                        customerId = args[1]
+                        if not isGuid(customerId):
+                            print('%s does not seem to be a valid GUID format, trying it as customer name' % customerId)
+                            customerName = customerId
+                            customerId = getCustomerId(self.variables['cspToken'], customerName, opts.verbose)
+                            if not (customerId and isGuid(customerId)):
+                                print('No customer was found named %s' % customerName)
+                                return False
+                    elif self.variables['customerId'] and isGuid(self.variables['customerId']):
+                        customerId = self.variables['customerId']
+                    self.variables['armToken'] = armlogin(customerId, self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
+                    if self.variables['armToken']:
+                        print("ARM token generated with app authentication, use the command 'show variable armToken' to verify its value")
+                else:
+                    print ("Please make sure you have set the environment variable cspUsername with the 'set cspUsername' command")
 
         # Set Graph Token
         elif mycmd[:5] == 'graph':

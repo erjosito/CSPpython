@@ -8,7 +8,7 @@ Additionally, you can find a sample script createCustomer.py, that shows how to 
 
 ## Using the CSPCLI module
 
-Download the cspcli.py file to a directory in your machine from where you can import modules. You can then import the functions you require (at least the login function). Check the script createCustomer.py for an example where the functions cspLogin and addCustomer are imported.
+Download the cspcli.py file to a directory in your machine from where you can import modules. You can then import the functions you require (at least the login function). Check the script createCustomer.py for an example where the functions cspLogin and addCustomer are imported (works when cspcli.py and createCustomer.py are in the same directory).
 
 ## CSPCLI Tutorial
 
@@ -65,7 +65,7 @@ sandbox> set cspToken apponly
 If you want to know exactly what REST API call a certain command did, you can use the option --verbose or -v. For example, issue another token, this time with the --verbose option:
 
 ```
-sandbox> set cspToken apponly -v
+sandbox> set cspToken -v
 ```
 
 An environment with the token value should have been set:
@@ -110,73 +110,19 @@ sandbox> show app
 
 Notice the column 'AvailableToOtherTenants' (might be truncated to something shorter like 'Available'). If the Web App AvailableToOtherTenants is set to False, you need to change that. You can do it following the instructions here: https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-integrating-applications
 
-The last step is configuring the newly created subscription to accept authentication from our app. I haven't found a way of doing that over standard APIs, so I defined an Azure Function that does the job. This Azure Function needs user credentials in order to log into the Azure subscription, create a service principal associated to our app, and assign the role of 'Contributor' to that service principal for the whole subscription. 
+The last step is authenticating to the ARM API for the newly created subscription. For that we will leverage app+user authentication, where we will use a special app assigned for Powershell, that is encoded in the Python module.
+
+Now we should be able to generate an ARM token for the subscription, and do something with it. In this example we will just create a resource group in the new subscription. Please make sure that at least 3 minutes have passed after the customer creation, since that is more or less the time it takes for the customer to be fully provisioned. In order to use app+user authentication, you will need to specify as an environment variable a username with CSP admin privilege, and the token generation process will prompt you for the password for that user. 
 
 ```
-sandbox> set cspUsername yourusername@yourcspsandboxdomain.onmicrosoft.com
-sandbox> add role
+sandbox> set variable cspUsername adminuser@yourcspdomain.onmicrosoft.com
+sandbox> set armtoken --userauth
+Please enter the password for user adminuser@yourcspdomain.onmicrosoft.com:
 ```
 
-
-For reference, here is the code for the Azure Function:
-
-```
-# POST method: $req
-$requestBody = Get-Content $req -Raw | ConvertFrom-Json
-$subscription = $requestBody.subscription
-$appId = $requestBody.appId
-$tenantId = $requestBody.tenantId
-$user = $requestBody.user
-$password = $requestBody.password
-
-# Login
-$secPassword = ConvertTo-SecureString $password -AsPlainText -Force
-$mycreds = New-Object System.Management.Automation.PSCredential ($user, $secPassword)
-Login-AzureRmAccount -Credential $mycreds -TenantId $tenantId
-Select-AzureRmSubscription -SubscriptionId $subscription
-
-# Verify no Service Principal exists for our app yet
-$principal = Get-AzureRmADServicePrincipal | ? ApplicationId -eq $appId
-
-# Create SP for multitenant app
-if ($principal.Count -eq 0) {
-    $principal = New-AzureRmADServicePrincipal -ApplicationId $appid
-    # Verify new Service Principal exists now
-    $principal = Get-AzureRmADServicePrincipal | ? ApplicationId -eq $appId
-    if ($principal.Count -eq 1) {
-        $spMessage = "New service principal successfully created, OID " + $principal.Id
-    } else {
-        $spMessage = "Service Principal creation does not seem to have worked too well..."
-    }
-} else {
-    $spMessage = "There is already a service principal for app ID " + $appId + ', OID ' + $principal.Id + ', skipping service principal creation'
-}
-$role = Get-AzureRmRoleAssignment | ? objectid -eq $principal.Id
-if ($role.Count -eq 0) {
-    # Assign Owner role (or contributor, or something else)
-    New-AzureRmRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $appid
-    $role = Get-AzureRmRoleAssignment | ? objectid -eq $principal.Id
-    if ($role.Count -eq 1) {
-        $roleMessage = "Role " + $role.RoleDefinitionName + " successfully assigned to service principal"
-    } else {
-        $roleMessage = "Role assignment does not seem to have worked too well..."
-    }
-} else {
-    $roleMessage = "Service principal already has the role " + $role.RoleDefinitionName + " assigned, skipping role assignment"
-}
-
-$output = @{}
-$output.add('servicePrincipal', $spMessage)
-$output.add('roleAssignment', $roleMessage)
-$outputJson = $output | convertTo-Json
-
-Out-File -Encoding Ascii -FilePath $res -inputObject $outputJson
-```
-
-Now we should be able to generate an ARM token for the subscription, and do something with it. In this example we will just create a resource group in the new subscription. Please make sure that at least 3 minutes have passed after the customer creation, since that is more or less the time it takes for the customer to be fully provisioned.
+Finally, we can verify that the ARM token is working by creating any given resource in the new subscription. For the test we will use a Resource Group (does not cost any money). The following three commands list the existing resource groups in the subscription (there should not be anything yet), then create a new one, and lastly verify that it was successfully created.
 
 ```
-sandbox> set armtoken
 sandbox> show rg
 sandbox> add rg <your resource group name> westeurope
 sandbox> show rg
