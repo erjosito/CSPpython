@@ -59,7 +59,7 @@ sandbox>
 Now it is time to do our first REST API call, which will be to authenticate the app. CSP authentication can be app-based or app-and-user-based, as described here: https://msdn.microsoft.com/en-us/library/partnercenter/mt634709.aspx. For most operations you just need app-only authentication:
 
 ```
-sandbox> set cspToken apponly
+sandbox> set cspToken
 ```
 
 If you want to know exactly what REST API call a certain command did, you can use the option --verbose or -v. For example, issue another token, this time with the --verbose option:
