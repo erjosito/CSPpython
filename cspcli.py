@@ -18,9 +18,9 @@ AZURE_OFFER_ID = 'MS-AZR-0146P'
 ##################
 
 # Get token for CSP with app auth
-def csplogin(tenantId, appId, appSecret, verbose=False):
-    url = 'https://login.windows.net/'+ tenantId + '/oauth2/token'
-    data = 'grant_type=client_credentials&resource=https%3A%2F%2Fgraph.windows.net&client_id=' + appId + '&client_secret=' + appSecret
+def csplogin(tenantId, appId, appSecret, loginUrl="login.windows.net", graphUrl="graph.windows.net", verbose=False):
+    url = 'https://' + loginUrl + '/'+ tenantId + '/oauth2/token'
+    data = 'grant_type=client_credentials&resource=https%3A%2F%2F' + graphUrl + '&client_id=' + appId + '&client_secret=' + appSecret
     if verbose:
         print('VERBOSE - *************** REST API CALL - BEGIN *************** ')
         print('VERBOSE - POST to URL %s' % url)
@@ -33,9 +33,13 @@ def csplogin(tenantId, appId, appSecret, verbose=False):
             print('VERBOSE - RETURN CODE ' + str(response.status_code))
             print('VERBOSE - RESPONSE %s' % response.text)
             print('VERBOSE - ***************  REST API CALL - END  *************** ')
-        jsonResponse = response.json()
-        token = jsonResponse['access_token']
-        return token
+        try:
+            jsonResponse = response.json()
+            token = jsonResponse['access_token']
+            return token
+        except:
+            print('Could not extract token from answer')
+            return False
     else:
         print ("Error: RETURN CODE " + str(response.status_code))
         if verbose:
@@ -44,8 +48,8 @@ def csplogin(tenantId, appId, appSecret, verbose=False):
         return False
 
 # Get token for CSP with app+user auth
-def csploginUser(tenantId, appId, username, verbose=False):
-    url = 'https://login.windows.net/'+ tenantId + '/oauth2/token'
+def csploginUser(tenantId, appId, username, loginUrl="login.windows.net", verbose=False):
+    url = 'https://' + loginUrl + '/'+ tenantId + '/oauth2/token'
     password = getpass.getpass('Password for user %s: ' % username)
     data = 'grant_type=password&resource=https%3A%2F%2Fapi.partnercenter.microsoft.com&client_id=' + appId + '&username=' + username + '&password=' + password
     if verbose:
@@ -60,9 +64,13 @@ def csploginUser(tenantId, appId, username, verbose=False):
             print('VERBOSE - RETURN CODE ' + str(response.status_code))
             print('VERBOSE - RESPONSE %s' % response.text)
             print('VERBOSE - ***************  REST API CALL - END  *************** ')
-        jsonResponse = response.json()
-        token = jsonResponse['access_token']
-        return token
+        try:
+            jsonResponse = response.json()
+            token = jsonResponse['access_token']
+            return token
+        except:
+            print('Could not extract token from answer')
+            return False
     else:
         print ("Error: RETURN CODE " + str(response.status_code))
         if verbose:
@@ -71,8 +79,8 @@ def csploginUser(tenantId, appId, username, verbose=False):
         return False
 
 # ARM login with app-only auth
-def armlogin(tenantId, appId, appSecret, verbose=False):
-    url = 'https://login.microsoftonline.com/'+ tenantId + '/oauth2/token?api-version=1.0'
+def armlogin(tenantId, appId, appSecret, loginUrl="login.microsoftonline.com", verbose=False):
+    url = 'https://' + loginUrl + '/'+ tenantId + '/oauth2/token?api-version=1.0'
     data = 'grant_type=client_credentials&resource=https%3A%2F%2Fmanagement.azure.com%2F&client_id=' + appId + '&client_secret=' + appSecret
     if verbose:
         print('VERBOSE - *************** REST API CALL - BEGIN *************** ')
@@ -97,12 +105,12 @@ def armlogin(tenantId, appId, appSecret, verbose=False):
         return False
 
 # ARM login with app+user auth
-def armloginUser(tenantId, username, verbose=False):
+def armloginUser(tenantId, username, loginUrl="login.microsoftonline.com", verbose=False):
     appId = '1950a258-227b-4e31-a9cf-717495945fc2'
     password = getpass.getpass('Please enter the password for user %s: ' % username)
     if not password:
         return False
-    url = 'https://login.microsoftonline.com/'+ tenantId + '/oauth2/token?api-version=1.0'
+    url = 'https://' + loginUrl + '/'+ tenantId + '/oauth2/token?api-version=1.0'
     data = 'grant_type=password&resource=https%3A%2F%2Fmanagement.azure.com%2F&client_id=' + appId + '&username=' + username + '&password=' + password + '&scope=openid' 
     if verbose:
         print('VERBOSE - *************** REST API CALL - BEGIN *************** ')
@@ -128,8 +136,8 @@ def armloginUser(tenantId, username, verbose=False):
 
 
 # Using AAD Graph (graph.windows.net), eventually to be migrated to Microsoft Graph (graph.microsoft.com)
-def graphLogin(tenantId, appId, appSecret, verbose=False):
-    url = 'https://login.microsoftonline.com/'+ tenantId + '/oauth2/token'
+def graphLogin(tenantId, appId, appSecret, loginUrl="login.microsoftonline.com", verbose=False):
+    url = 'https://' + loginUrl + '/'+ tenantId + '/oauth2/token'
     data = 'grant_type=client_credentials&resource=https%3A%2F%2Fgraph.windows.net%2F&client_id=' + appId + '&client_secret=' + appSecret
     if verbose:
         print('VERBOSE - *************** REST API CALL - BEGIN *************** ')
@@ -438,8 +446,8 @@ def buildGraphAuthCodeRequest(customerId, appId):
     url += '&resource=https%3A%2F%2Fcspcsap.onmicrosoft.com%2F81c0ed80-86f4-4522-80a4-24f6559527b9'
     return url
 
-def getApps(token, customerId, details=None, verbose=None):
-    url = 'https://graph.windows.net/' + customerId + '/applications?api-version=1.6'
+def getApps(token, customerId, graphUrl="graph.windows.net", details=None, verbose=None):
+    url = 'https://' + graphUrl + '/' + customerId + '/applications?api-version=1.6'
     response = sendRequest('GET', url, token, verbose=verbose)
     if details:
         return response
@@ -558,8 +566,9 @@ def sendRequest(method, url, token=None, textPayload=None, verbose=False):
             print("VERBOSE - RETURN CODE: %s" % str(response.status_code))
             print("VERBOSE - ANSWER: %s" % str(response.text.encode('utf-8')))
             print('VERBOSE - ***************  REST API CALL - END  *************** ')
-        jsonResponse = simplejson.loads(response.text)
-        return jsonResponse
+        if response.text:
+            jsonResponse = simplejson.loads(response.text)
+            return jsonResponse
     else:
         print("ERROR: RETURN CODE " + str(response.status_code))
         if verbose:
@@ -627,7 +636,9 @@ class CmdLineApp(cmd2.Cmd):
     prompt = 'csp> '
 
     # Global variables in a dictionary
-    variables = {"cspTenantId": None, "appId": None, "appSecret": None, "customerId": None, "subscriptionId": None, "cspToken": None, "armToken": None, 'nativeAppId': None, 'cspUsername': None}
+    variables = {"cspTenantId": None, "appId": None, "appSecret": None, 
+                 "customerId": None, "subscriptionId": None, "cspToken": None, "armToken": None, 'nativeAppId': None, 
+                 "cspUsername": None, "graphUrl": "graph.windows.net", "loginUrl": "login.microsoftonline.com"}
 
     # Setting this true makes it run a shell command if a cmd2/cmd command doesn't exist
     default_to_shell = True
@@ -767,15 +778,15 @@ class CmdLineApp(cmd2.Cmd):
         # Show Apps
         elif mycmd[:3] == 'app':
             if self.variables['appId'] and self.variables['appSecret'] and self.variables['cspTenantId']:
-                cspGraphToken = graphLogin(self.variables['cspTenantId'], self.variables['appId'], self.variables['appSecret'], opts.verbose)
+                cspGraphToken = graphLogin(self.variables['cspTenantId'], self.variables['appId'], self.variables['appSecret'], loginUrl=self.variables['loginUrl'], verbose=opts.verbose)
                 if cspGraphToken:
                     if opts.verbose:
                         print('VERBOSE - Graph token obtained successfully for CSP Tenant ID %s' % self.variables['cspTenantId'])
                     if opts.details:
-                        appJson = getApps(cspGraphToken, self.variables['cspTenantId'], verbose=opts.verbose, details=opts.details)
+                        appJson = getApps(cspGraphToken, self.variables['cspTenantId'], graphUrl=self.variables['graphUrl'], verbose=opts.verbose, details=opts.details)
                         print(simplejson.dumps(appJson, indent=4))
                     else:
-                        appList = getApps(cspGraphToken, self.variables['cspTenantId'], verbose=opts.verbose, details=opts.details)
+                        appList = getApps(cspGraphToken, self.variables['cspTenantId'], graphUrl=self.variables['graphUrl'], verbose=opts.verbose, details=opts.details)
                         if appList:
                             print('APPLICATIONS in CSP TENANT ID %s:' % self.variables['cspTenantId'])
                             printList(appList, [20, 37, 20, 10, 37, 20])
@@ -823,6 +834,8 @@ class CmdLineApp(cmd2.Cmd):
            set cspToken --userauth
            set armToken
            set armToken --userauth
+           set graphUrl
+           set loginUrl
         '''
         args = line.split()
         if len(args) < 1:
@@ -845,6 +858,22 @@ class CmdLineApp(cmd2.Cmd):
                 return False
             else:
                 self.variables['cspTenantId'] = args[1]
+
+        # Set Graph API URL for CSP token app-only authentication 
+        elif mycmd[:2] == 'gr':
+            if len(args) < 2:
+                print ("Not enough arguments provided, please type 'help set' for information on this command")
+                return False
+            else:
+                self.variables['graphUrl'] = args[1]
+
+        # Set Login URL for CSP and ARM authentication 
+        elif mycmd[:2] == 'lo':
+            if len(args) < 2:
+                print ("Not enough arguments provided, please type 'help set' for information on this command")
+                return False
+            else:
+                self.variables['loginUrl'] = args[1]
 
         # Set Native App Id
         elif mycmd[:3] == 'nat':
@@ -891,15 +920,17 @@ class CmdLineApp(cmd2.Cmd):
             # App+User (default option)
             if opts.userauth:
                 if self.variables['cspTenantId'] and self.variables['cspUsername'] and self.variables['nativeAppId']:
-                    self.variables['cspToken'] = csploginUser(self.variables['cspTenantId'], self.variables['nativeAppId'], self.variables['cspUsername'], verbose=opts.verbose)
-                    print('CSP token set using App+User authentication')
+                    self.variables['cspToken'] = csploginUser(self.variables['cspTenantId'], self.variables['nativeAppId'], self.variables['cspUsername'], loginUrl=self.variables['loginUrl'], verbose=opts.verbose)
+                    if self.variables['cspToken']:
+                        print('CSP token set using App+User authentication')
                 else:
                     print ("Please make sure you have set the variables cspTenantId, nativeAppId and cspUsername")
             # App Only
             else:
                 if self.variables['cspTenantId'] and self.variables['appId'] and self.variables['appSecret']:
-                    self.variables['cspToken'] = csplogin(self.variables['cspTenantId'], self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
-                    print('CSP token set using App-only authentication')
+                    self.variables['cspToken'] = csplogin(self.variables['cspTenantId'], self.variables['appId'], self.variables['appSecret'], loginUrl=self.variables['loginUrl'], graphUrl=self.variables['graphUrl'], verbose=opts.verbose)
+                    if self.variables['cspToken']:
+                        print('CSP token set using App-only authentication')
                 else:
                     print ("Please make sure you have set the variables cspTenantId, appId and appSecret")
 
@@ -928,7 +959,7 @@ class CmdLineApp(cmd2.Cmd):
                     else:
                         print("The customerId variable does not seem to be set, please make sure you define one with the command 'set customerId'")
                         return False
-                    self.variables['armToken'] = armloginUser(customerId, username, verbose=opts.verbose)
+                    self.variables['armToken'] = armloginUser(customerId, username, loginUrl=self.variables['loginUrl'], verbose=opts.verbose)
                     if self.variables['armToken']:
                         print('ARM token generated with app+password authentication')
                 else:
@@ -948,7 +979,7 @@ class CmdLineApp(cmd2.Cmd):
                                 return False
                     elif self.variables['customerId'] and isGuid(self.variables['customerId']):
                         customerId = self.variables['customerId']
-                    self.variables['armToken'] = armlogin(customerId, self.variables['appId'], self.variables['appSecret'], verbose=opts.verbose)
+                    self.variables['armToken'] = armlogin(customerId, self.variables['appId'], self.variables['appSecret'], loginUrl=self.variables['loginUrl'], verbose=opts.verbose)
                     if self.variables['armToken']:
                         print("ARM token generated with app authentication, use the command 'show variable armToken' to verify its value")
                 else:

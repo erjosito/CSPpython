@@ -1,5 +1,5 @@
-# Test config file with confidential info
-john.json
+# Test config files with confidential info
+*.json
 
 # Windows image file caches
 Thumbs.db
